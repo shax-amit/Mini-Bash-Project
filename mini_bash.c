@@ -14,15 +14,13 @@ int main(void) {
     int should_run = 1;
 
     while (should_run) {
-        /* 1. PRINT PROMPT */
         printf("mini_bash> ");
         fflush(stdout);
 
-        /* 2. GET USER INPUT */
         if (fgets(input, MAX_LINE, stdin) == NULL) break;
         input[strcspn(input, "\n")] = '\0';
 
-        /* 3. PARSE INPUT INTO TOKENS */
+        /* 1. PARSE INPUT INTO TOKENS */
         int i = 0;
         char *token = strtok(input, " \t\r\n");
         while (token != NULL && i < MAX_ARGS - 1) {
@@ -33,26 +31,29 @@ int main(void) {
 
         if (args[0] == NULL) continue;
 
-        /* 4. BUILT-IN COMMAND: EXIT */
+        /* 2. CHECK FOR BACKGROUND EXECUTION */
+        int background = 0;
+        if (i > 0 && strcmp(args[i-1], "&") == 0) {
+            background = 1;
+            args[i-1] = NULL; /* Remove '&' from arguments before execution */
+        }
+
+        /* 3. BUILT-IN COMMANDS */
         if (strcmp(args[0], "exit") == 0) {
             should_run = 0;
             continue;
         }
 
-        /* 5. BUILT-IN COMMAND: CD */
         if (strcmp(args[0], "cd") == 0) {
-            /* If no argument provided, or too many, handle error */
             if (args[1] == NULL) {
                 fprintf(stderr, "mini_bash: expected argument to \"cd\"\n");
             } else {
-                if (chdir(args[1]) != 0) {
-                    perror("mini_bash");
-                }
+                if (chdir(args[1]) != 0) perror("mini_bash");
             }
-            continue; /* Skip fork and continue to next prompt */
+            continue;
         }
 
-        /* 6. EXTERNAL COMMANDS: FORK AND EXECUTE */
+        /* 4. EXTERNAL COMMANDS: FORK AND EXECUTE */
         pid_t pid = fork();
 
         if (pid < 0) {
@@ -60,13 +61,20 @@ int main(void) {
             return 1;
         } 
         else if (pid == 0) {
+            /* CHILD PROCESS */
             if (execvp(args[0], args) == -1) {
                 printf("mini_bash: command not found: %s\n", args[0]);
             }
             exit(1);
         } 
         else {
-            wait(NULL);
+            /* PARENT PROCESS */
+            if (background == 0) {
+                /* ONLY WAIT IF NOT IN BACKGROUND */
+                wait(NULL);
+            } else {
+                printf("[Process running in background with PID: %d]\n", pid);
+            }
         }
     }
 
