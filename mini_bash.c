@@ -20,11 +20,9 @@ int main(void) {
 
         /* 2. GET USER INPUT */
         if (fgets(input, MAX_LINE, stdin) == NULL) break;
-
-        /* 3. REMOVE NEWLINE CHARACTER */
         input[strcspn(input, "\n")] = '\0';
 
-        /* 4. PARSE INPUT INTO TOKENS */
+        /* 3. PARSE INPUT INTO TOKENS */
         int i = 0;
         char *token = strtok(input, " \t\r\n");
         while (token != NULL && i < MAX_ARGS - 1) {
@@ -33,32 +31,41 @@ int main(void) {
         }
         args[i] = NULL; 
 
-        /* 5. CHECK FOR EMPTY INPUT */
         if (args[0] == NULL) continue;
 
-        /* 6. CHECK FOR EXIT COMMAND */
+        /* 4. BUILT-IN COMMAND: EXIT */
         if (strcmp(args[0], "exit") == 0) {
             should_run = 0;
             continue;
         }
 
-        /* 7. FORK A CHILD PROCESS */
+        /* 5. BUILT-IN COMMAND: CD */
+        if (strcmp(args[0], "cd") == 0) {
+            /* If no argument provided, or too many, handle error */
+            if (args[1] == NULL) {
+                fprintf(stderr, "mini_bash: expected argument to \"cd\"\n");
+            } else {
+                if (chdir(args[1]) != 0) {
+                    perror("mini_bash");
+                }
+            }
+            continue; /* Skip fork and continue to next prompt */
+        }
+
+        /* 6. EXTERNAL COMMANDS: FORK AND EXECUTE */
         pid_t pid = fork();
 
         if (pid < 0) {
-            /* Error occurred */
             fprintf(stderr, "Fork Failed\n");
             return 1;
         } 
         else if (pid == 0) {
-            /* 8. CHILD PROCESS: EXECUTE COMMAND */
             if (execvp(args[0], args) == -1) {
                 printf("mini_bash: command not found: %s\n", args[0]);
             }
-            exit(1); /* Exit child if execvp fails */
+            exit(1);
         } 
         else {
-            /* 9. PARENT PROCESS: WAIT FOR CHILD */
             wait(NULL);
         }
     }
