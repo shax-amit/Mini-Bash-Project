@@ -132,17 +132,35 @@ int main(void) {
         /* SINGLE COMMAND EXECUTION */
         pid_t pid = fork();
         if (pid == 0) {
+            /* תהליך הבן */
             if (outfile != NULL) {
                 int fd = open(outfile, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+                if (fd == -1) {
+                    perror("mini_bash: open");
+                    exit(1);
+                }
                 dup2(fd, STDOUT_FILENO);
                 close(fd);
             }
+
             if (execvp(args[0], args) == -1) {
-                printf("mini_bash: command not found: %s\n", args[0]);
+                /* דרישה: הודעת שגיאה בפורמט ספציפי ושימוש ב-perror */
+                fprintf(stderr, "[%s]: Unknown Command\n", args[0]); // 
+                perror("execvp failed"); // 
+                exit(127); 
             }
-            exit(1);
+        } else if (pid > 0) {
+            /* תהליך האב */
+            int status;
+            waitpid(pid, &status, 0); // המתנה לסיום תהליך הבן 
+
+            if (WIFEXITED(status)) {
+                /* דרישה: דיווח על הצלחה והצגת ערך החזרה */
+                int return_code = WEXITSTATUS(status);
+                printf("Command executed successfully with Return Code: %d\n", return_code); // 
+            }
         } else {
-            wait(NULL);
+            perror("fork failed");
         }
     }
     return 0;
