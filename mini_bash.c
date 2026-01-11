@@ -2,9 +2,11 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <sys/types.h>
+#include <sys/wait.h>
 
-#define MAX_LINE 80 /* The maximum length command */
-#define MAX_ARGS (MAX_LINE/2 + 1) /* The maximum number of arguments */
+#define MAX_LINE 80 
+#define MAX_ARGS (MAX_LINE/2 + 1) 
 
 int main(void) {
     char input[MAX_LINE];
@@ -17,9 +19,7 @@ int main(void) {
         fflush(stdout);
 
         /* 2. GET USER INPUT */
-        if (fgets(input, MAX_LINE, stdin) == NULL) {
-            break;
-        }
+        if (fgets(input, MAX_LINE, stdin) == NULL) break;
 
         /* 3. REMOVE NEWLINE CHARACTER */
         input[strcspn(input, "\n")] = '\0';
@@ -31,18 +31,35 @@ int main(void) {
             args[i++] = token;
             token = strtok(NULL, " \t\r\n");
         }
-        args[i] = NULL; /* NULL terminate the list of arguments */
+        args[i] = NULL; 
 
-        /* 5. CHECK FOR EXIT COMMAND */
-        if (args[0] != NULL && strcmp(args[0], "exit") == 0) {
+        /* 5. CHECK FOR EMPTY INPUT */
+        if (args[0] == NULL) continue;
+
+        /* 6. CHECK FOR EXIT COMMAND */
+        if (strcmp(args[0], "exit") == 0) {
             should_run = 0;
             continue;
         }
 
-        /* 6. DISPLAY PARSING RESULT (TEMPORARY FOR TESTING) */
-        if (args[0] != NULL) {
-            printf("Executing: %s\n", args[0]);
-            /* Next step will implement fork and execvp here */
+        /* 7. FORK A CHILD PROCESS */
+        pid_t pid = fork();
+
+        if (pid < 0) {
+            /* Error occurred */
+            fprintf(stderr, "Fork Failed\n");
+            return 1;
+        } 
+        else if (pid == 0) {
+            /* 8. CHILD PROCESS: EXECUTE COMMAND */
+            if (execvp(args[0], args) == -1) {
+                printf("mini_bash: command not found: %s\n", args[0]);
+            }
+            exit(1); /* Exit child if execvp fails */
+        } 
+        else {
+            /* 9. PARENT PROCESS: WAIT FOR CHILD */
+            wait(NULL);
         }
     }
 
