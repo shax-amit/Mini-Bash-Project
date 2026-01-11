@@ -9,7 +9,7 @@
 #define MAX_LINE 80 
 #define MAX_ARGS (MAX_LINE/2 + 1) 
 
-/* FUNCTION TO CLEAN INPUT */
+/* FUNCTION TO CLEAN INPUT: Removes non-printable characters */
 void sanitize_input(char *str) {
     int i = 0, j = 0;
     while (str[i] != '\0') {
@@ -21,6 +21,11 @@ void sanitize_input(char *str) {
     str[j] = '\0';
 }
 
+/* Helper function: Checks if the path exists and has execution permissions */
+int is_executable(char *path) {
+    return access(path, X_OK) == 0;
+}
+
 int main(void) {
     char input[MAX_LINE];
     char last_command[MAX_LINE];
@@ -30,6 +35,7 @@ int main(void) {
 
     memset(last_command, 0, MAX_LINE);
 
+    /* Main execution loop */
     while (should_run) {
         printf("mini_bash> ");
         fflush(stdout);
@@ -41,7 +47,7 @@ int main(void) {
 
         if (strlen(input) == 0) continue;
 
-        /* HISTORY LOGIC */
+        /* HISTORY LOGIC (!!) */
         if (strcmp(input, "!!") == 0) {
             if (!has_history) {
                 printf("No commands in history.\n");
@@ -54,7 +60,7 @@ int main(void) {
             has_history = 1;
         }
 
-        /* PARSE INPUT */
+        /* PARSE INPUT into tokens */
         int i = 0;
         char *token = strtok(input, " \t\r\n");
         while (token != NULL && i < MAX_ARGS - 1) {
@@ -118,7 +124,7 @@ int main(void) {
             }
         }
 
-        /* BUILT-INS */
+        /* BUILT-IN COMMANDS */
         if (strcmp(args[0], "exit") == 0) {
             should_run = 0;
             continue;
@@ -132,7 +138,7 @@ int main(void) {
         /* SINGLE COMMAND EXECUTION */
         pid_t pid = fork();
         if (pid == 0) {
-            /* תהליך הבן */
+            /* Child Process */
             if (outfile != NULL) {
                 int fd = open(outfile, O_WRONLY | O_CREAT | O_TRUNC, 0644);
                 if (fd == -1) {
@@ -143,21 +149,41 @@ int main(void) {
                 close(fd);
             }
 
-            if (execvp(args[0], args) == -1) {
-                /* דרישה: הודעת שגיאה בפורמט ספציפי ושימוש ב-perror */
-                fprintf(stderr, "[%s]: Unknown Command\n", args[0]); // 
-                perror("execvp failed"); // 
-                exit(127); 
+            char path[1024];
+            int found = 0;
+
+            /* Step A: Search in the HOME directory */
+            char *home = getenv("HOME"); 
+            if (home != NULL) {
+                snprintf(path, sizeof(path), "%s/%s", home, args[0]);
+                if (is_executable(path)) {
+                    found = 1;
+                    execv(path, args); 
+                }
+            }
+
+            /* Step B: Search in /bin directory if not found in HOME */
+            if (!found) {
+                snprintf(path, sizeof(path), "/bin/%s", args[0]);
+                if (is_executable(path)) {
+                    found = 1;
+                    execv(path, args);
+                }
+            }
+
+            /* Step C: Handle command not found */
+            if (!found) {
+                fprintf(stderr, "[%s]: Unknown Command\n", args[0]);
+                exit(127);
             }
         } else if (pid > 0) {
-            /* תהליך האב */
+            /* Parent Process */
             int status;
-            waitpid(pid, &status, 0); // המתנה לסיום תהליך הבן 
+            waitpid(pid, &status, 0); 
 
             if (WIFEXITED(status)) {
-                /* דרישה: דיווח על הצלחה והצגת ערך החזרה */
                 int return_code = WEXITSTATUS(status);
-                printf("Command executed successfully with Return Code: %d\n", return_code); // 
+                printf("Command executed successfully with Return Code: %d\n", return_code);
             }
         } else {
             perror("fork failed");
