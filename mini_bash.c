@@ -4,11 +4,12 @@
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/wait.h>
-#include <fcntl.h> /* Required for open() */
+#include <fcntl.h>
 
 #define MAX_LINE 80 
 #define MAX_ARGS (MAX_LINE/2 + 1) 
 
+/* FUNCTION TO CLEAN INPUT */
 void sanitize_input(char *str) {
     int i = 0, j = 0;
     while (str[i] != '\0') {
@@ -40,6 +41,7 @@ int main(void) {
 
         if (strlen(input) == 0) continue;
 
+        /* HISTORY LOGIC */
         if (strcmp(input, "!!") == 0) {
             if (!has_history) {
                 printf("No commands in history.\n");
@@ -52,7 +54,7 @@ int main(void) {
             has_history = 1;
         }
 
-        /* 1. PARSE INPUT */
+        /* PARSE INPUT */
         int i = 0;
         char *token = strtok(input, " \t\r\n");
         while (token != NULL && i < MAX_ARGS - 1) {
@@ -61,19 +63,62 @@ int main(void) {
         }
         args[i] = NULL; 
 
-        /* 2. CHECK FOR REDIRECTION (>) */
+        /* CHECK FOR PIPE (|) */
+        int pipe_idx = -1;
+        for (int k = 0; args[k] != NULL; k++) {
+            if (strcmp(args[k], "|") == 0) {
+                pipe_idx = k;
+                break;
+            }
+        }
+
+        if (pipe_idx != -1) {
+            /* PIPE HANDLING */
+            args[pipe_idx] = NULL;
+            char **left_args = args;
+            char **right_args = &args[pipe_idx + 1];
+
+            int fd[2];
+            pipe(fd);
+
+            if (fork() == 0) {
+                /* Left child: write to pipe */
+                dup2(fd[1], STDOUT_FILENO);
+                close(fd[0]);
+                close(fd[1]);
+                execvp(left_args[0], left_args);
+                exit(1);
+            }
+
+            if (fork() == 0) {
+                /* Right child: read from pipe */
+                dup2(fd[0], STDIN_FILENO);
+                close(fd[0]);
+                close(fd[1]);
+                execvp(right_args[0], right_args);
+                exit(1);
+            }
+
+            close(fd[0]);
+            close(fd[1]);
+            wait(NULL);
+            wait(NULL);
+            continue;
+        }
+
+        /* CHECK FOR REDIRECTION (>) */
         char *outfile = NULL;
         for (int k = 0; args[k] != NULL; k++) {
             if (strcmp(args[k], ">") == 0) {
                 if (args[k+1] != NULL) {
                     outfile = args[k+1];
-                    args[k] = NULL; /* Terminate args before '>' */
+                    args[k] = NULL;
                 }
                 break;
             }
         }
 
-        /* 3. BUILT-INS */
+        /* BUILT-INS */
         if (strcmp(args[0], "exit") == 0) {
             should_run = 0;
             continue;
@@ -84,26 +129,19 @@ int main(void) {
             continue;
         }
 
-        /* 4. EXECUTION */
+        /* SINGLE COMMAND EXECUTION */
         pid_t pid = fork();
         if (pid == 0) {
-            /* CHILD PROCESS */
             if (outfile != NULL) {
-                /* Redirect stdout to file */
                 int fd = open(outfile, O_WRONLY | O_CREAT | O_TRUNC, 0644);
-                if (fd < 0) {
-                    perror("mini_bash");
-                    exit(1);
-                }
                 dup2(fd, STDOUT_FILENO);
                 close(fd);
             }
-
             if (execvp(args[0], args) == -1) {
                 printf("mini_bash: command not found: %s\n", args[0]);
             }
             exit(1);
-        } else if (pid > 0) {
+        } else {
             wait(NULL);
         }
     }
